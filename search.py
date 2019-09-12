@@ -211,8 +211,37 @@ def aStarSearch(problem, heuristic=nullHeuristic):
     """
     Search the node that has the lowest combined cost and heuristic first.
     """
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    startState = problem.getStartState()
+
+    history = dict()        # history: state->[prev state, action from prev state, cost]
+    history[startState] = [None, None, 0]
+
+    unexplored = util.PriorityQueue()
+    unexplored.push(startState, history[startState][2]+heuristic(startState, problem))
+    explored = set()
+
+    while(not unexplored.isEmpty()):
+        current = unexplored.pop()
+        if(problem.isGoalState(current)):
+            break
+        if(current in explored):
+            continue
+        for newState in problem.getSuccessors(current):
+            newCost = history[current][2] + newState[2]
+            if(newState[0] not in history or newCost < history[newState[0]][2]):
+                history[newState[0]] = [current, newState[1], newCost]
+                unexplored.push(newState[0], newCost+heuristic(newState[0], problem))
+
+    if(not problem.isGoalState(current)):
+        return None
+
+    ans = []
+    backtrace = current
+    while (backtrace != startState):
+        ans = [history[backtrace][1]] + ans
+        backtrace = history[backtrace][0]
+
+    return ans
 
 
 # Abbreviations
