@@ -297,7 +297,7 @@ class CornersProblem(search.SearchProblem):
     """
 
     # State = {{X*Y} * {Bool, Bool, Bool, Bool}}
-    #   --> state = [(x, y), (NW corner taken?, NE?, SW?, SE?)]
+    #   --> state = [(x, y), (NW corner taken?, NE?, SE?, SW?)]
 
 
     def __init__(self, startingGameState):
@@ -307,7 +307,7 @@ class CornersProblem(search.SearchProblem):
         self.walls = startingGameState.getWalls()
         self.startingPosition = startingGameState.getPacmanPosition()
         top, right = self.walls.height - 2, self.walls.width - 2
-        self.corners = ((1, top), (right, top), (1, 1), (right, 1))
+        self.corners = ((1, top), (right, top), (right, 1), (1, 1))
         for corner in self.corners:
             if not startingGameState.hasFood(*corner):
                 print 'Warning: no food in corner ' + str(corner)
@@ -340,7 +340,6 @@ class CornersProblem(search.SearchProblem):
         """
 
         "*** YOUR CODE HERE ***"
-
         successors = []
 
         x,y = state[0]
@@ -410,27 +409,79 @@ def cornersHeuristic(state, problem):
     walls = problem.walls  # These are the walls of the maze, as a Grid (game.py)
 
     "*** YOUR CODE HERE ***"
-    hValue = 0
     manhattanDist = lambda x1, x2: abs(x1[0]-x2[0]) + abs(x1[1]-x2[1])
+
     position = state[0]
+    unvisitedCorners = []
 
-    if(not state[1][0]):        # NW
-        hValue += manhattanDist(position, problem.corners[0])
-        position = corners[0]
+    for i in range(4):
+        if(not state[1][i]):
+            unvisitedCorners.append(i)
 
-    if(not state[1][1]):        # NE
-        hValue += manhattanDist(position, problem.corners[1])
-        position = corners[1]
+    numCornersLeft = len(unvisitedCorners)
 
-    if(not state[1][3]):        # SE
-        hValue += manhattanDist(position, problem.corners[3])
+    if(numCornersLeft==0):
+        return 0
 
-    if(not state[1][2]):        # SW
-        hValue += manhattanDist(position, problem.corners[2])
-        position = corners[2]
+    if(numCornersLeft==1):
+        return manhattanDist(position, corners[unvisitedCorners[0]])
 
+    if(numCornersLeft==2):
+        corner1 = corners[unvisitedCorners[0]]
+        corner2 = corners[unvisitedCorners[1]]
+        corner1Dist = manhattanDist(position, corner1)
+        corner2Dist = manhattanDist(position, corner2)
 
-    return hValue
+        return manhattanDist(corner1, corner2) + min(corner1Dist, corner2Dist)
+
+    if(numCornersLeft==3):
+        if state[1][0]:
+            farCorner = corners[2]
+            adjCorner1 = corners[1]
+            adjCorner2 = corners[3]
+
+        if state[1][1]:
+            farCorner = corners[3]
+            adjCorner1 = corners[0]
+            adjCorner2 = corners[2]
+
+        if state[1][2]:
+            farCorner = corners[0]
+            adjCorner1 = corners[1]
+            adjCorner2 = corners[3]
+
+        if state[1][3]:
+            farCorner = corners[1]
+            adjCorner1 = corners[0]
+            adjCorner2 = corners[2]
+
+        candidate1 = manhattanDist(adjCorner1, farCorner) + manhattanDist(farCorner, adjCorner2) + \
+                min(manhattanDist(position, adjCorner1), manhattanDist(position, adjCorner2))
+        candidate2 = manhattanDist(farCorner, position) + manhattanDist(adjCorner1, adjCorner2) + \
+                min(manhattanDist(farCorner, adjCorner1), manhattanDist(farCorner, adjCorner2))
+
+        return min(candidate1, candidate2)
+
+    else:   # all four corners are not taken
+        # First, pick the nearest corner
+        minDist = -1
+        for i in range(4):
+            tempDist = manhattanDist(position, corners[i])
+            if(minDist==-1 or tempDist < minDist):
+                firstCornerIndex = i
+                minDist = tempDist
+
+        hValue = manhattanDist(position, corners[firstCornerIndex])
+
+        clockWiseCost = 0
+        for i in range(3):
+            clockWiseCost += manhattanDist(corners[(firstCornerIndex+i)%4], corners[(firstCornerIndex+i+1)%4])
+
+        counterClockWiseCost = 0
+        for i in range(3):
+            counterClockWiseCost += manhattanDist(corners[(firstCornerIndex-i)%4], corners[(firstCornerIndex-i-1)%4])
+
+        return hValue + min(clockWiseCost, counterClockWiseCost)
 
 
 class AStarCornersAgent(SearchAgent):
@@ -543,8 +594,12 @@ def foodHeuristic(state, problem):
     Submissions with mazeDistance will receive a 0 for this question.
     """
     position, foodGrid = state
-    "*** YOUR CODE HERE ***"
-    return 0
+    numFood = 0
+    for i in range(foodGrid.width):
+        for j in range(foodGrid.height):
+            if(foodGrid.data[i][j]): numFood+=1
+
+    return numFood
 
 
 class ClosestDotSearchAgent(SearchAgent):
