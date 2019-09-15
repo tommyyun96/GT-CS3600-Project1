@@ -1,4 +1,6 @@
-# searchAgents.py
+import copy
+
+#searchAgents.py
 # ---------------
 # Licensing Information:  You are free to use or extend these projects for 
 # educational purposes provided that (1) you do not distribute or publish 
@@ -593,14 +595,181 @@ def foodHeuristic(state, problem):
 
     Submissions with mazeDistance will receive a 0 for this question.
     """
+    if('subgraphs' not in problem.heuristicInfo):
+        problem.heuristicInfo['subgraphs'] = divide(problem.walls)
+
+    subgraphInfo = problem.heuristicInfo['subgraphs']
+
+    manhattanDist = lambda x1, x2: abs(x1[0]-x2[0]) + abs(x1[1]-x2[1])
     position, foodGrid = state
-    numFood = 0
+
+    # no food
+    if(foodGrid.count()==0):
+        return 0
+    # 1 food
+    if(foodGrid.count()==1):
+        minDist = -1
+
+        for i in range(foodGrid.width):
+            for j in range(foodGrid.height):
+                if(foodGrid.data[i][j]):
+                    tempDist = manhattanDist((i, j), position)
+                    if(minDist == -1 or tempDist < minDist):
+                        minDist = tempDist
+        return minDist
+
+    # >= 2 food
+    foodList = []
     for i in range(foodGrid.width):
         for j in range(foodGrid.height):
-            if(foodGrid.data[i][j]): numFood+=1
+            if(foodGrid.data[i][j]):
+                foodList.append((i,j))
 
-    return numFood
+    maxDistFood1, maxDistFood2 = (-1,-1), (-1,-1)
+    maxDist = -1
 
+    for i in range(len(foodList)-1):
+        for j in range(i+1, len(foodList)):
+            if((foodList[i], foodList[j]) not in problem.heuristicInfo):
+                problem.heuristicInfo[(foodList[i], foodList[j])] = dist(foodList[i], foodList[j], subgraphInfo)
+                #problem.heuristicInfo[(foodList[i], foodList[j])] = dist(foodList[i], foodList[j], problem.walls)
+                #problem.heuristicInfo[(foodList[i], foodList[j])] = manhattanDist(foodList[i], foodList[j])
+            tempDist = problem.heuristicInfo[(foodList[i], foodList[j])]
+            if(maxDist < tempDist):
+                maxDist = tempDist
+                maxDistFood1, maxDistFood2 = foodList[i], foodList[j]
+
+    return maxDist + min(dist(position, maxDistFood1, subgraphInfo), dist(position, maxDistFood2, subgraphInfo))
+
+def divide(walls):
+    # try to divide region into separate two
+    roomList = []
+    for i in range(walls.width):
+        for j in range(walls.height):
+            if(not walls[i][j]):
+                roomList.append((i,j))
+    targetNum = len(roomList)/2
+    subgraph = None
+    refPosition = None
+    for i in range(walls.width):
+        for j in range(walls.height):
+            if(walls[i][j]):
+                continue
+            # it's not a wall
+            if(walls[i - 1][j] and walls[i + 1][j] and not walls[i][j - 1] and not walls[i][j + 1]):
+                new_walls = [None]*walls.width
+                for k in range(len(new_walls)):
+                    new_walls[k] = []
+                    row = new_walls[k]
+                    for l in range(walls.height):
+                        row.append(walls[k][l])
+                new_walls[i][j] = True
+                tempSubgraph = getSubgraph(new_walls, (i, j-1))
+                if (i, j+1) in tempSubgraph:
+                    continue
+                if(subgraph==None or abs(len(subgraph)-targetNum) > abs(len(tempSubgraph)-targetNum)):
+                    subgraph = tempSubgraph
+                    refPosition = (i, j)
+
+            if(not walls[i - 1][j] and not walls[i + 1][j] and walls[i][j - 1] and walls[i][j + 1]):
+                new_walls = [None]*walls.width
+                for k in range(len(new_walls)):
+                    new_walls[k] = []
+                    row = new_walls[k]
+                    for l in range(walls.height):
+                        row.append(walls[k][l])
+                new_walls[i][j] = True
+                tempSubgraph = getSubgraph(new_walls, (i-1, j))
+                if (i+1, j) in tempSubgraph:
+                    continue
+                if(subgraph==None or abs(len(subgraph)-targetNum) > abs(len(tempSubgraph)-targetNum)):
+                    subgraph = tempSubgraph
+                    refPosition = (i, j)
+
+    if(subgraph==None):
+        return None
+
+    for item in subgraph:
+        roomList.remove(item)
+
+    roomList.remove(refPosition)
+
+    return (roomList, subgraph, refPosition)
+
+def getSubgraph(walls, position):
+    unexplored = util.Queue()
+    visited = set()
+    unexplored.push(position)
+    visited.add(position)
+
+    while(not unexplored.isEmpty()):
+        current = unexplored.pop()
+        candidates = [(current[0]-1, current[1]), (current[0]+1, current[1]),
+                      (current[0], current[1]-1), (current[0], current[1]+1)]
+        for candidate in candidates:
+            if walls[candidate[0]][candidate[1]]:
+                continue
+            if candidate in visited:
+                continue
+            unexplored.push(candidate)
+            visited.add(candidate)
+
+    return visited
+
+def dist(p1, p2, subgraphInfo):
+    manhattanDist = lambda x1, x2: abs(x1[0]-x2[0]) + abs(x1[1]-x2[1])
+    if(subgraphInfo==None):
+        dist = manhattanDist(p1, p2)
+    elif( (p1 in subgraphInfo[0] and p2 in subgraphInfo[1]) or (p1 in subgraphInfo[1] and p2 in subgraphInfo[0])):
+        dist = manhattanDist(p1, subgraphInfo[2]) + manhattanDist(subgraphInfo[2], p2)
+    else:
+        dist = manhattanDist(p1, p2)
+
+    return dist
+
+def dist2(p1, p2, walls):
+    history = dict()
+    unexplored = util.Queue()
+    unexplored.push(p1)
+    visited = set()
+    visited.add(p1)
+
+    while(not unexplored.isEmpty()):
+        x, y = unexplored.pop()
+
+        if( (x, y) == p2):
+            break
+
+        if(not walls[x-1][y] and (x-1, y) not in visited):
+            unexplored.push((x-1, y))
+            visited.add((x-1, y))
+            history[(x-1, y)] = (x, y)
+
+        if(not walls[x+1][y] and (x+1, y) not in visited):
+            unexplored.push((x+1, y))
+            visited.add((x+1, y))
+            history[(x+1, y)] = (x, y)
+
+        if (not walls[x][y-1] and (x, y-1) not in visited):
+            unexplored.push((x, y-1))
+            visited.add((x, y-1))
+            history[(x, y-1)] = (x, y)
+
+        if (not walls[x][y+1] and (x, y+1) not in visited):
+            unexplored.push((x, y+1))
+            visited.add((x, y+1))
+            history[(x, y+1)] = (x, y)
+
+    assert (x, y) == p2
+
+    cnt =0
+    backtrace = p2
+
+    while(backtrace!=p1):
+        backtrace = history[backtrace]
+        cnt+=1
+
+    return cnt
 
 class ClosestDotSearchAgent(SearchAgent):
     """
@@ -633,7 +802,7 @@ class ClosestDotSearchAgent(SearchAgent):
         problem = AnyFoodSearchProblem(gameState)
 
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        return search.bfs(problem)
 
 
 class AnyFoodSearchProblem(PositionSearchProblem):
@@ -670,7 +839,7 @@ class AnyFoodSearchProblem(PositionSearchProblem):
         x, y = state
 
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        return self.food[x][y]
 
 
 ##################
@@ -681,12 +850,14 @@ class ApproximateSearchAgent(Agent):
     """
     Implement your contest entry here.  Change anything but the class name.
     """
-
-    def registerInitialState(self, state):
+    def registerInitialState(self, gameState):
         """
         This method is called before any moves are made.
         """
         "*** YOUR CODE HERE ***"
+        self.actions = solveExtra(gameState)
+        self.actionIndex = 0
+        print 'Path found with cost %d.' % len(self.actions)
 
     def getAction(self, state):
         """
@@ -695,8 +866,335 @@ class ApproximateSearchAgent(Agent):
         Directions.{North, South, East, West, Stop}
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
 
+        i = self.actionIndex
+        self.actionIndex += 1
+        if i < len(self.actions):
+            #print(1)
+            return self.actions[i]
+        else:
+            #print(2)
+            return Directions.STOP
+
+
+def solveExtra(gameState):
+    initialPosition = gameState.getPacmanPosition()
+    currentPosition = initialPosition
+
+    divideResult = divide(gameState.getWalls())
+    if(divideResult == None or (len(divideResult[0])<8 and len(divideResult[1]) > 20)
+                            or (len(divideResult[1])<8 and len(divideResult[0]) > 20)):
+        if(gameState.getFood().count()<20):
+            return search.aStarSearch(FoodClearProblem(gameState), foodClearHeuristic)
+
+        else:
+            return solveGreedy(gameState)
+
+    subgroup1, subgroup2, dividingPosition = divideResult
+    new_gameState1 = copy.deepcopy(gameState)
+    new_gameState2 = copy.deepcopy(gameState)
+    #new_gameState1 = gameState.deepCopy()
+    #new_gameState2 = gameState.deepCopy()
+    for position in subgroup2:
+        new_gameState1.data.layout.walls[position[0]][position[1]] = True
+        if(new_gameState1.data.food.data[position[0]][position[1]]):
+            new_gameState1.data.food.data[position[0]][position[1]] = False
+    for position in subgroup1:
+        new_gameState2.data.layout.walls[position[0]][position[1]] = True
+        if(new_gameState2.data.food.data[position[0]][position[1]]):
+            new_gameState2.data.food.data[position[0]][position[1]] = False
+    #new_gameState.data.layout.walls.data[x[2][0]][x[2][1]] = True
+    #new_gameState.data.agentStates[0].start.pos = (20,1)
+    """[Directions.WEST, Directions.WEST, Directions.WEST, Directions.WEST, Directions.WEST+"""
+
+    new_gameState1.data.layout.walls[dividingPosition[0]][dividingPosition[1]] = True
+    if(new_gameState1.data.food.data[dividingPosition[0]][dividingPosition[1]]):
+        new_gameState1.data.food.data[dividingPosition[0]][dividingPosition[1]] = False
+    new_gameState2.data.layout.walls[dividingPosition[0]][dividingPosition[1]] = True
+    if(new_gameState2.data.food.data[dividingPosition[0]][dividingPosition[1]]):
+        new_gameState2.data.food.data[dividingPosition[0]][dividingPosition[1]] = False
+
+    if(gameState.getPacmanPosition() in subgroup1):
+        mainGameState = new_gameState1
+        subGameState = new_gameState2
+    else:
+        mainGameState = new_gameState2
+        subGameState = new_gameState1
+
+    if(not mainGameState.data.layout.walls[dividingPosition[0]-1][dividingPosition[1]]):
+        indicator = (dividingPosition[0]-1, dividingPosition[1])
+        starter = (dividingPosition[0]+1, dividingPosition[1])
+        mediumPath = [Directions.EAST, Directions.EAST]
+        mediumPath_out = [Directions.WEST, Directions.WEST]
+    elif(not mainGameState.data.layout.walls[dividingPosition[0]+1][dividingPosition[1]]):
+        indicator = (dividingPosition[0]+1, dividingPosition[1])
+        starter = (dividingPosition[0]-1, dividingPosition[1])
+        mediumPath = [Directions.WEST, Directions.WEST]
+        mediumPath_out = [Directions.EAST, Directions.EAST]
+    elif(not mainGameState.data.layout.walls[dividingPosition[0]][dividingPosition[1]-1]):
+        indicator = (dividingPosition[0], dividingPosition[1]-1)
+        starter = (dividingPosition[0], dividingPosition[1]+1)
+        mediumPath = [Directions.NORTH, Directions.NORTH]
+        mediumPath_out = [Directions.SOUTH, Directions.SOUTH]
+    elif(not mainGameState.data.layout.walls[dividingPosition[0]][dividingPosition[1]+1]):
+        indicator = (dividingPosition[0], dividingPosition[1]+1)
+        starter = (dividingPosition[0], dividingPosition[1]-1)
+        mediumPath = [Directions.SOUTH, Directions.SOUTH]
+        mediumPath_out = [Directions.NORTH, Directions.NORTH]
+
+    path1 = solveExtra(mainGameState)
+    if(subGameState.getFood().count()==0):
+        return path1
+
+    subGameState.data.agentStates[0].configuration.pos = starter
+    subGameState.data.food.data[starter[0]][starter[1]] = False
+
+    path2 = solveExtra(subGameState)
+
+    # trace and insert path2 in to path1
+    if (currentPosition == indicator):
+        path = mediumPath + path2 + mediumPath_out + path1
+    else:
+        for i in range(len(path1)):
+            if (path1[i] == Directions.WEST):
+                currentPosition = (currentPosition[0] - 1, currentPosition[1])
+            elif (path1[i] == Directions.EAST):
+                currentPosition = (currentPosition[0] + 1, currentPosition[1])
+            elif (path1[i] == Directions.SOUTH):
+                currentPosition = (currentPosition[0], currentPosition[1] - 1)
+            elif (path1[i] == Directions.NORTH):
+                currentPosition = (currentPosition[0], currentPosition[1] + 1)
+
+            if (currentPosition == indicator):
+                path = path1[:i + 1] + mediumPath + path2
+                break
+
+        tempPosition = starter
+        for j in range(len(path2)):
+            if (path2[j] == Directions.WEST):
+                tempPosition = (tempPosition[0] - 1, tempPosition[1])
+            elif (path2[j] == Directions.EAST):
+                tempPosition = (tempPosition[0] + 1, tempPosition[1])
+            elif (path2[j] == Directions.SOUTH):
+                tempPosition = (tempPosition[0], tempPosition[1] - 1)
+            elif (path2[j] == Directions.NORTH):
+                tempPosition = (tempPosition[0], tempPosition[1] + 1)
+
+        path += search.bfs(PositionSearchProblem(gameState, start = tempPosition, goal = starter)) + mediumPath_out + path1[i + 1:]
+
+    gameState.data.agentStates[0].configuration.pos = initialPosition
+
+    return path
+
+
+
+
+### Helper problem for contest
+class FoodClearProblem(FoodSearchProblem):
+
+    def isGoalState(self, state):
+        return state[1].count() == 0 and self.getStartState()[0] == state[0]
+
+class FoodClearAgent(AStarFoodSearchAgent):
+    """
+    A SearchAgent for FoodSearchProblem using A* and your foodHeuristic
+    """
+
+    def __init__(self):
+        self.searchFunction = lambda prob: search.aStarSearch(prob, foodHeuristic)
+        #self.searchFunction = lambda prob: search.aStarSearch(prob, foodClearHeuristic)
+        #self.searchFunction = lambda prob: search.bfs(prob)
+        self.searchType = FoodSearchProblem
+
+
+
+def manhattanDist(x1, x2):
+    return abs(x1[0]-x2[0]) + abs(x1[1]-x2[1])
+
+def foodClearHeuristic(state, problem):
+    current = state[0]
+    foods = state[1]
+    foodsList = []
+    for i in range(foods.width):
+        for j in range(foods.height):
+            if foods[i][j]:
+                foodsList.append((i, j))
+    problem.heuristicInfo['foodsList'] = foodsList
+
+    if(len(foodsList)==0):
+        return manhattanDist(current, problem.getStartState()[0])
+    if(len(foodsList)==1):
+        return manhattanDist(current, foodsList[0])+manhattanDist(foodsList[0], problem.getStartState()[0])
+
+    maxDist = -1
+    maxDistFood1, maxDistFood2 = None, None
+    for i in range(len(foodsList)-1):
+        for j in range(i+1, len(foodsList)):
+            tempDist = manhattanDist(foodsList[i], foodsList[j])
+            if(maxDist<tempDist):
+                maxDist = tempDist
+                maxDistFood1 = foodsList[i]
+                maxDistFood2 = foodsList[j]
+
+    return min(manhattanDist(current, maxDistFood1)+manhattanDist(maxDistFood1, maxDistFood2)+ \
+               manhattanDist(maxDistFood2, problem.getStartState()[0]),
+               manhattanDist(current, maxDistFood2) + manhattanDist(maxDistFood2, maxDistFood1) + \
+               manhattanDist(maxDistFood1, problem.getStartState()[0]))
+
+def solveGreedy(gameState):
+    currentState = gameState
+    #print("Total Foods: %d", gameState.getFood().count())
+    if(currentState.getFood().count()==0):
+        return []
+
+    nextPathSegmentList = findPathToClosestDot(currentState)  # The missing piece
+    actions = []
+
+    for nextPathSegment in nextPathSegmentList:
+        tempState = copy.deepcopy(currentState)
+        for action in nextPathSegment:
+            legal = tempState.getLegalActions()
+            if action not in legal:
+                t = (str(action), str(tempState))
+                raise Exception, 'findPathToClosestDot returned an illegal move: %s!\n%s' % t
+            tempState = tempState.generateSuccessor(0, action)
+        tempActions = nextPathSegment + solveGreedy(tempState)
+        if(len(actions)==0 or len(tempActions)<len(actions)):
+            actions = tempActions
+
+    return actions
+
+def solveGreedyWithTarget(gameState, targetPosition):
+    currentState = gameState
+    # print("Total Foods: %d", gameState.getFood().count())
+    if (currentState.getFood().count() == 0):
+        return search.bfs(PositionSearchProblem(gameState, goal = targetPosition, start = currentState.getPacmanPosition()))
+
+    nextPathSegmentList = findPathToClosestDot(currentState)  # The missing piece
+    actions = []
+
+    for nextPathSegment in nextPathSegmentList:
+        tempState = copy.deepcopy(currentState)
+        for action in nextPathSegment:
+            legal = tempState.getLegalActions()
+            if action not in legal:
+                t = (str(action), str(tempState))
+                raise Exception, 'findPathToClosestDot returned an illegal move: %s!\n%s' % t
+            tempState = tempState.generateSuccessor(0, action)
+        tempActions = nextPathSegment + solveGreedy(tempState)
+        if (len(actions) == 0 or len(tempActions) < len(actions)):
+            actions = tempActions
+
+    return actions
+
+def findPathToClosestDot(gameState):
+    """
+    Returns a path (a list of actions) to the closest dot, starting from gameState.
+    """
+    # Here are some useful elements of the startState
+    startPosition = gameState.getPacmanPosition()
+    food = gameState.getFood()
+    walls = gameState.getWalls()
+
+    "*** YOUR CODE HERE ***"
+    closestFoods = findClosestFoods(walls, food, startPosition)
+
+    if(len(closestFoods)==1):
+        return [search.bfs(PositionSearchProblem(gameState, goal=closestFoods[0], start=startPosition, warn =False))]
+
+    minDepth = -1
+    maxDepth = -1
+    minDepthFood = None
+    maxDepthFood = None
+
+    for candidate in closestFoods:
+        tempDepth = measeureDepth(candidate, food)
+        if(tempDepth == -1):    # circular
+            continue
+        if(minDepth == -1 or tempDepth<minDepth):
+            minDepth = tempDepth
+            minDepthFood = candidate
+        if(maxDepth == -1 or maxDepth<tempDepth):
+            maxDepth = tempDepth
+            maxDepthFood = candidate
+
+    if(minDepth == -1):
+        return [search.bfs(PositionSearchProblem(gameState, goal=closestFoods[0], start=startPosition))]
+    if(minDepth < 30):
+        return [search.bfs(PositionSearchProblem(gameState, goal=minDepthFood, start=startPosition, warn = False))]
+    return [search.bfs(PositionSearchProblem(gameState, goal=minDepthFood, start=startPosition, warn = False)),
+            search.bfs(PositionSearchProblem(gameState, goal=maxDepthFood, start=startPosition, warn = False))]
+
+def findClosestFoods(walls, food, position):
+    depthDict = dict()
+    depthDict[position] = 0
+    unexplored = util.Queue()
+    unexplored.push(position)
+    explored = set()
+
+    isFoodFound = False
+    depthOfFirstFood = -1
+    foodsFound = []
+
+    while(not unexplored.isEmpty()):
+        currx, curry = unexplored.pop()
+        explored.add((currx, curry))
+
+        if (isFoodFound):
+            if (depthDict[(currx, curry)] > depthOfFirstFood+1):
+                break
+
+        if(food[currx][curry]):
+            if(not isFoodFound):
+                isFoodFound = True
+                depthOfFirstFood = depthDict[(currx, curry)]
+            #assert depthDict[(currx, curry)] == depthOfFirstFood
+            foodsFound.append((currx, curry))
+
+
+        if(not isFoodFound):
+            candidates = []
+            if(not walls[currx-1][curry]):
+                candidates.append((currx-1, curry))
+            if(not walls[currx+1][curry]):
+                candidates.append((currx+1, curry))
+            if(not walls[currx][curry-1]):
+                candidates.append((currx, curry-1))
+            if(not walls[currx][curry+1]):
+                candidates.append((currx, curry+1))
+            for cand in candidates:
+                if(not cand in explored):
+                    unexplored.push(cand)
+                    depthDict[cand] = depthDict[(currx, curry)]+1
+
+    return foodsFound
+
+def measeureDepth(position, food):
+    depthDict = dict()
+    depthDict[position] = 0
+    unexplored = util.Queue()
+    unexplored.push(position)
+    explored = set()
+
+    while(not unexplored.isEmpty()):
+        currx, curry = unexplored.pop()
+        explored.add((currx, curry))
+
+        candidates = []
+        if(food[currx-1][curry]):
+            candidates.append((currx-1, curry))
+        if(food[currx+1][curry]):
+            candidates.append((currx+1, curry))
+        if(food[currx][curry-1]):
+            candidates.append((currx, curry-1))
+        if(food[currx][curry+1]):
+            candidates.append((currx, curry+1))
+        for cand in candidates:
+            if(not cand in explored):
+                unexplored.push(cand)
+                depthDict[cand] = depthDict[(currx, curry)]+1
+
+    return depthDict[(currx, curry)]
 
 def mazeDistance(point1, point2, gameState):
     """
